@@ -76,20 +76,6 @@ This will:
 
 ### 3. Configure API Keys
 
-Open `.env` and replace the placeholders with your actual API keys:
-
-```env
-# Google Gemini — https://aistudio.google.com/app/apikey
-GOOGLE_API_KEY=your_actual_key_here
-
-# Tavily Search — https://tavily.com/
-TAVILY_API_KEY=your_actual_key_here
-
-# LangSmith — https://smith.langchain.com/
-LANGSMITH_API_KEY=your_actual_key_here
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_PROJECT=ScholarGuard
-```
 
 ### 4. Activate the Virtual Environment
 
