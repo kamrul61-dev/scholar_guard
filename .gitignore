@@ -1,0 +1,33 @@
+# ===== ScholarGuard .gitignore =====
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment variables (secrets)
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Vector store (large binary data)
+data/vector_store/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Distribution
+*.egg-info/
+dist/
+build/

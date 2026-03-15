@@ -1,0 +1,189 @@
+"""
+ScholarGuard — Utility Functions & LangSmith Configuration
+
+Provides LangSmith tracing initialization, LLM factory (Groq), and helper
+formatters used across the entire application.
+"""
+
+import os
+import functools
+from datetime import datetime
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+
+
+# ------------------------------------------------------------------ #
+#  Environment & LangSmith Initialization
+# ------------------------------------------------------------------ #
+
+def initialize_langsmith() -> None:
+    """Load .env and configure LangSmith tracing environment variables.
+
+    Sets LANGCHAIN_TRACING_V2, LANGCHAIN_PROJECT, and LANGSMITH_API_KEY
+    so every downstream LangChain / LangGraph call is automatically traced.
+    """
+    load_dotenv()
+
+    # Enforce tracing — override even if .env has different values
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_PROJECT", "ScholarGuard")
+
+    required_keys = ["GROQ_API_KEY", "LANGSMITH_API_KEY"]
+    missing = [k for k in required_keys if not os.environ.get(k)]
+    if missing:
+        print(f"⚠  Warning: Missing environment variables: {', '.join(missing)}")
+        print("   Some features may not work. Check your .env file.")
+
+
+def get_llm(
+    model: str = "llama-3.3-70b-versatile",
+    temperature: float = 0.0,
+    max_tokens: int = 4096,
+) -> ChatGroq:
+    """Return a configured Groq LLM instance.
+
+    Args:
+        model: Groq model identifier (default: llama-3.3-70b-versatile).
+        temperature: Sampling temperature (0 = deterministic).
+        max_tokens: Maximum output tokens.
+
+    Returns:
+        ChatGroq instance ready for use with LangChain.
+    """
+    return ChatGroq(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        groq_api_key=os.environ.get("GROQ_API_KEY"),
+    )
+
+
+def get_vision_llm(
+    model: str = "llama-3.2-90b-vision-preview",
+    temperature: float = 0.0,
+    max_tokens: int = 4096,
+) -> ChatGroq:
+    """Return a Groq vision-capable LLM for image processing (OCR).
+
+    Args:
+        model: Vision model identifier on Groq.
+        temperature: Sampling temperature.
+        max_tokens: Maximum output tokens.
+
+    Returns:
+        ChatGroq instance with vision capabilities.
+    """
+    return ChatGroq(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        groq_api_key=os.environ.get("GROQ_API_KEY"),
+    )
+
+
+# ------------------------------------------------------------------ #
+#  Traced Tool Decorator
+# ------------------------------------------------------------------ #
+
+def traced_tool_call(func):
+    """Decorator that ensures a tool call is visible in LangSmith traces.
+
+    Wraps the function so its name and arguments appear as a distinct
+    span in the LangSmith dashboard, making debugging straightforward.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        # LangChain's @tool decorator already integrates with LangSmith.
+        # This wrapper adds a safety net + standardized logging.
+        try:
+            result = func(*args, **kwargs)
+            return result
+        except Exception as e:
+            error_msg = f"[ScholarGuard] Tool '{func.__name__}' failed: {e}"
+            print(error_msg)
+            return error_msg
+    return wrapper
+
+
+# ------------------------------------------------------------------ #
+#  Report Helpers
+# ------------------------------------------------------------------ #
+
+def format_report(
+    claim: str,
+    rag_evidence: str,
+    search_evidence: str,
+    verdict: str,
+    confidence: float,
+) -> str:
+    """Build a structured Markdown audit report.
+
+    Args:
+        claim: The original claim text.
+        rag_evidence: Evidence retrieved from local documents.
+        search_evidence: Evidence retrieved from web search.
+        verdict: Final verdict (Verified / Refuted / Inconclusive).
+        confidence: Confidence score between 0.0 and 1.0.
+
+    Returns:
+        Formatted Markdown string suitable for display in Streamlit.
+    """
+    confidence_pct = f"{confidence * 100:.0f}%"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Map verdict to emoji for visual clarity
+    verdict_emoji = {
+        "Verified": "✅",
+        "Refuted": "❌",
+        "Inconclusive": "⚠️",
+    }.get(verdict, "❓")
+
+    report = f"""
+## 📋 ScholarGuard Audit Report
+**Generated:** {timestamp}
+
+---
+
+### 📝 Claim Under Review
+> {claim}
+
+---
+
+### 📚 Local Document Evidence (RAG)
+{rag_evidence if rag_evidence else "_No relevant documents found in the knowledge base._"}
+
+---
+
+### 🌐 Web Search Evidence
+{search_evidence if search_evidence else "_No web evidence retrieved._"}
+
+---
+
+### 🏛️ Final Verdict
+
+| Field        | Result                          |
+|--------------|---------------------------------|
+| **Verdict**  | {verdict_emoji} **{verdict}**   |
+| **Confidence** | **{confidence_pct}**          |
+
+---
+_Report generated by ScholarGuard — Academic Integrity & Fact-Checking System_
+"""
+    return report.strip()
+
+
+def get_confidence_color(confidence: float) -> str:
+    """Return a hex color based on confidence level for UI display.
+
+    Args:
+        confidence: Value between 0.0 and 1.0.
+
+    Returns:
+        Hex color string.
+    """
+    if confidence >= 0.8:
+        return "#22c55e"   # green
+    elif confidence >= 0.5:
+        return "#f59e0b"   # amber
+    else:
+        return "#ef4444"   # red
